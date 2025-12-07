@@ -1,5 +1,4 @@
 import json
-import os
 from typing import Any, Dict, List
 
 from ..data.vacancy import Vacancy
@@ -7,68 +6,59 @@ from .abstract_saver import VacancySaver
 
 
 class JSONSaver(VacancySaver):
-    """Класс для сохранения вакансий в JSON-файл"""
-
     def __init__(self, filename: str = "vacancies.json"):
-        self.filename = filename
-        if not os.path.exists(self.filename):
-            with open(self.filename, "w", encoding="utf-8") as f:
-                json.dump([], f, ensure_ascii=False, indent=2)
+        self.__filename = filename
 
-    def add_vacancy(self, vacancy: Vacancy):
-        vacancies = self._load_vacancies()
-        vacancy_dict = {
-            "title": vacancy.title,
-            "url": vacancy.url,
-            "salary_from": vacancy.salary_from,
-            "salary_to": vacancy.salary_to,
-            "description": vacancy.description,
-            "employer": vacancy.employer,
-        }
-        # Проверка на дубли
-        if not any(v["url"] == vacancy.url for v in vacancies):
-            vacancies.append(vacancy_dict)
-            self._save_vacancies(vacancies)
+    @property
+    def filename(self) -> str:
+        return self.__filename
 
-    def get_vacancies(self, criteria: Dict[str, Any]) -> List[Vacancy]:
-        vacancies = self._load_vacancies()
-        result = []
-        for v in vacancies:
-            match = True
-            if "keyword" in criteria:
-                keyword = criteria["keyword"].lower()
-                if (
-                    keyword not in v["title"].lower()
-                    and keyword not in v["description"].lower()
-                ):
-                    match = False
-            if "min_salary" in criteria:
-                if (v["salary_from"] or 0) < criteria["min_salary"]:
-                    match = False
-            if match:
-                vac = Vacancy(
-                    title=v["title"],
-                    url=v["url"],
-                    salary_from=v["salary_from"],
-                    salary_to=v["salary_to"],
-                    description=v["description"],
-                    employer=v["employer"],
-                )
-                result.append(vac)
+    def _vacancy_to_dict(self, vacancy: Vacancy) -> Dict[str, Any]:
+        return {slot: getattr(vacancy, slot) for slot in vacancy.__slots__}
+
+    def _dict_to_vacancy(self, data: Dict[str, Any]) -> Vacancy:
+        return Vacancy(
+            title=data["title"],
+            url=data["url"],
+            salary_from=data.get("salary_from"),
+            salary_to=data.get("salary_to"),
+            description=data.get("description", ""),
+            employer=data.get("employer", "Не указан"),
+        )
+
+    def add_vacancy(self, vacancy: Vacancy) -> None:
+        data = self._load_data()
+        data.append(self._vacancy_to_dict(vacancy))
+        self._save_data(data)
+
+    def get_vacancies(self, criteria: Dict[str, str] | None = None) -> List[Vacancy]:
+        if criteria is None:
+            criteria = {}
+        data = self._load_data()
+        result = [self._dict_to_vacancy(item) for item in data]
+
+        if "keyword" in criteria:
+            keyword = criteria["keyword"].lower()
+            result = [
+                v
+                for v in result
+                if keyword in f"{v.title} {v.description} {v.employer}".lower()
+            ]
         return result
 
-    def delete_vacancy(self, vacancy: Vacancy):
-        vacancies = self._load_vacancies()
-        new_vacancies = [v for v in vacancies if v["url"] != vacancy.url]
-        self._save_vacancies(new_vacancies)
+    def delete_vacancy(self, vacancy: Vacancy) -> None:
+        data = self._load_data()
+        vac_dict = self._vacancy_to_dict(vacancy)
+        data = [item for item in data if item != vac_dict]
+        self._save_data(data)
 
-    def _load_vacancies(self) -> List[Dict]:
+    def _load_data(self) -> List[Dict[str, Any]]:
         try:
-            with open(self.filename, "r", encoding="utf-8") as f:
+            with open(self.__filename, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError):
             return []
 
-    def _save_vacancies(self, vacancies: List[Dict]):
-        with open(self.filename, "w", encoding="utf-8") as f:
-            json.dump(vacancies, f, ensure_ascii=False, indent=2)
+    def _save_data(self, data: List[Dict[str, Any]]) -> None:
+        with open(self.__filename, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)

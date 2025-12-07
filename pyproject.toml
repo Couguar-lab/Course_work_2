@@ -28,3 +28,10 @@ dev = [
     "requests-mock (>=1.12.1,<2.0.0)",
     "pytest-cov (>=7.0.0,<8.0.0)"
 ]
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^4.5.0"
+types-requests = "^2.32.4.20250913"
+
+[tool.mypy]
+    ignore_missing_imports = true
